@@ -1,0 +1,35 @@
+cabal-version: 2.2
+name: zlib-bytes
+version: 0.1.0.0
+synopsis: zlib compression bindings
+bug-reports: https://github.com/byteverse/zlib-bytes
+license: BSD-3-Clause
+license-file: LICENSE
+author: Eric Demko
+maintainer: andrew.thaddeus@gmail.com
+copyright: 2020 Andrew Martin
+category: Data
+build-type: Simple
+extra-source-files: CHANGELOG.md
+
+library
+  exposed-modules: Zlib
+  build-depends: base >=4.12 && <5
+  default-language: Haskell2010
+  ghc-options: -O2 -Wall
+  include-dirs: cbits
+  hs-source-dirs: src
+
+test-suite test
+  default-language: Haskell2010
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  ghc-options: -Wall -O2
+  build-depends:
+    , base >=4.11.1 && <5
+    , byteslice
+    , zlib-bytes
+    , primitive
+    , tasty
+    , tasty-quickcheck
