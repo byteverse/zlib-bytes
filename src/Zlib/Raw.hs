@@ -17,9 +17,9 @@ module Zlib.Raw
   ) where
 
 import Control.Exception (Exception)
-import Control.Monad.Reader (ReaderT, runReaderT, asks)
 import Control.Monad.Except (ExceptT, runExceptT, lift)
 import Control.Monad.Except (MonadError(throwError,catchError))
+import Control.Monad.Reader (ReaderT, runReaderT, asks)
 import Control.Monad.ST (runST)
 import Control.Monad.ST (ST)
 import Data.Bytes (Bytes)
@@ -32,6 +32,7 @@ import GHC.Exts (MutableByteArray#)
 import GHC.IO (unsafeIOToST)
 
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Chunks as Chunks
 import qualified Data.Primitive.ByteArray as BA
 
 
@@ -105,8 +106,9 @@ decompress = Zlib $ loop ChunksNil
         loop acc'
       Z_STREAM_END -> do
         out <- Bytes.fromByteArray <$> BA.unsafeFreezeByteArray oBuf
-        outLen <- lift . lift . unsafeIOToST $ availOut stream#
-        pure $ case outLen of
+        outRest <- lift . lift . unsafeIOToST $ availOut stream#
+        let outLen = chunkSize - outRest
+        pure $ Chunks.reverse $ case outLen of
           0 -> acc
           _ -> ChunksCons (Bytes.unsafeTake outLen out) acc
       Z_NEED_DICT -> errorWithoutStackTrace "zlib: preset dictionary is needed to decompress"

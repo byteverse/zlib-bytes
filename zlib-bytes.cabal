@@ -1,4 +1,4 @@
-cabal-version: 2.2
+cabal-version: 3.0
 name: zlib-bytes
 version: 0.1.0.0
 synopsis: zlib compression bindings
@@ -10,7 +10,14 @@ maintainer: andrew.thaddeus@gmail.com
 copyright: 2020 Andrew Martin
 category: Data
 build-type: Simple
-extra-source-files: CHANGELOG.md
+extra-source-files:
+  , CHANGELOG.md
+  , test/expected-001.txt
+  , test/expected-002.txt
+  , test/expected-003.bin
+  , test/input-001.zlib
+  , test/input-002.zlib
+  , test/input-003.zlib
 
 library
   exposed-modules: Zlib
@@ -23,6 +30,23 @@ library
   default-language: Haskell2010
   ghc-options: -O2 -Wall
   include-dirs: cbits
+  c-sources:
+    , cbits/adler32.c
+    , cbits/compress.c
+    , cbits/crc32.c
+    , cbits/deflate.c
+    , cbits/gzclose.c
+    , cbits/gzlib.c
+    , cbits/gzread.c
+    , cbits/gzwrite.c
+    , cbits/hs_zlib.c
+    , cbits/infback.c
+    , cbits/inffast.c
+    , cbits/inflate.c
+    , cbits/inftrees.c
+    , cbits/trees.c
+    , cbits/uncompr.c
+    , cbits/zutil.c
   hs-source-dirs: src
 
 test-suite test
@@ -34,7 +58,8 @@ test-suite test
   build-depends:
     , base >=4.11.1 && <5
     , byteslice
-    , zlib-bytes
+    , bytestring >=0.10
     , primitive
     , tasty
     , tasty-quickcheck
+    , zlib-bytes
