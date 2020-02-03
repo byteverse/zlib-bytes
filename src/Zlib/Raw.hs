@@ -1,0 +1,196 @@
+{-# language BangPatterns #-}
+{-# language CApiFFI #-}
+{-# language FlexibleContexts #-}
+{-# language GeneralizedNewtypeDeriving #-}
+{-# language MagicHash #-}
+{-# language MultiParamTypeClasses #-}
+{-# language PatternSynonyms #-}
+{-# language RankNTypes #-}
+{-# language UnliftedFFITypes #-}
+{-# language ViewPatterns #-}
+
+module Zlib.Raw
+  ( Zlib
+  , runZlib
+  , decompress
+  , ZlibError(..)
+  ) where
+
+import Control.Exception (Exception)
+import Control.Monad.Reader (ReaderT, runReaderT, asks)
+import Control.Monad.Except (ExceptT, runExceptT, lift)
+import Control.Monad.Except (MonadError(throwError,catchError))
+import Control.Monad.ST (runST)
+import Control.Monad.ST (ST)
+import Data.Bytes (Bytes)
+import Data.Bytes.Chunks (Chunks(ChunksCons,ChunksNil))
+import Data.Primitive.ByteArray (MutableByteArray(MutableByteArray))
+import Data.Primitive.ByteArray (newByteArray, newPinnedByteArray)
+import Data.Word (Word8)
+import Foreign.Ptr (Ptr)
+import GHC.Exts (MutableByteArray#)
+import GHC.IO (unsafeIOToST)
+
+import qualified Data.Bytes as Bytes
+import qualified Data.Primitive.ByteArray as BA
+
+
+-- FIXME there are kinda two monads: ZlibCompress, ZlibDecompress
+-- so far, I've only done the latter
+newtype Zlib s a = Zlib { unZlib :: ReaderT (Stream s) (ExceptT ZlibError (ST s)) a }
+  deriving(Functor, Applicative, Monad)
+
+instance MonadError ZlibError (Zlib s) where
+  throwError exn = Zlib (throwError exn)
+  catchError try handle = Zlib (unZlib try `catchError` (unZlib . handle))
+
+data Stream s = Stream
+  { unStream :: MutableByteArray s
+  , noGcInp :: Bytes -- to ensure gc does not collect the input bytes prematurely
+  }
+
+runZlib :: (forall s. Zlib s a) -> Bytes -> Either ZlibError a
+runZlib action inp = runST $ runExceptT $ do
+  stream <- newStream inp
+  v <- runReaderT (unZlib action) stream `catchError` (\exn -> delStream stream >> throwError exn)
+  _ <- delStream stream
+  pure v
+
+
+------------ Idiomatic FFI Calls ------------
+
+type PreZlib s a = ExceptT ZlibError (ST s) a
+newStream :: Bytes -> PreZlib s (Stream s)
+newStream inp = do
+  let pinnedInp = Bytes.pin inp
+      inpP = Bytes.contents pinnedInp
+      inpLen = Bytes.length inp
+  MutableByteArray stream# <- newByteArray sizeofStream
+  ret <- lift . unsafeIOToST $ initDecompress stream# inpP inpLen
+  let stream = Stream
+        { unStream = MutableByteArray stream#
+        , noGcInp = pinnedInp
+        }
+  case ret of
+    Z_OK -> pure stream
+    Z_MEM_ERROR -> errorWithoutStackTrace "zlib: out of memory"
+    Z_VERSION_ERROR -> errorWithoutStackTrace "zlib: incompatible version"
+    Z_STREAM_ERROR -> throwError InvalidInitParameters
+    _ -> errorWithoutStackTrace "unknown error produced by zlib"
+
+delStream :: Stream s -> PreZlib s ()
+delStream stream = do
+  let !(MutableByteArray stream#) = unStream stream
+  ret <- lift . unsafeIOToST $ inflateEnd stream#
+  case ret of
+    Z_OK -> pure ()
+    Z_STREAM_ERROR -> throwError InvalidStreamState
+    _ -> errorWithoutStackTrace "unknown error produced by zlib"
+
+-- TODO couldn't I resize the output buffer rather than use chunks?
+-- probably more useful for an unsliced version
+decompress :: Zlib s Chunks
+decompress = Zlib $ loop ChunksNil
+  where
+  -- TODO adapt chunkSize based on input remaining and estimated compression ratio
+  chunkSize = 32 * 1024
+  loop acc = do
+    !(MutableByteArray stream#) <- asks unStream
+    !oBuf@(MutableByteArray oBuf#) <- newPinnedByteArray chunkSize
+    ret <- lift . lift . unsafeIOToST $ decompressChunk stream# oBuf# chunkSize
+    case ret of
+      Z_OK -> do
+        out <- Bytes.fromByteArray <$> BA.unsafeFreezeByteArray oBuf
+        let acc' = ChunksCons out acc
+        loop acc'
+      Z_STREAM_END -> do
+        out <- Bytes.fromByteArray <$> BA.unsafeFreezeByteArray oBuf
+        outLen <- lift . lift . unsafeIOToST $ availOut stream#
+        pure $ case outLen of
+          0 -> acc
+          _ -> ChunksCons (Bytes.unsafeTake outLen out) acc
+      Z_NEED_DICT -> errorWithoutStackTrace "zlib: preset dictionary is needed to decompress"
+      Z_DATA_ERROR -> throwError DataCorrupt
+      Z_STREAM_ERROR -> throwError InvalidStreamState
+      Z_MEM_ERROR -> errorWithoutStackTrace "zlib: out of memory"
+      Z_BUF_ERROR -> throwError BufferTooSmall
+      _ -> errorWithoutStackTrace "unknown error produced by zlib"
+
+
+------------ Idiomatic Error Handling ------------
+
+data ZlibError
+  = InvalidInitParameters -- corresponds to Z_STREAM_ERROR
+  | InvalidStreamState -- corresponds to Z_STREAM_ERROR
+  | DataCorrupt -- corresponds to Z_DATA_ERROR
+  | BufferTooSmall -- corresponds to Z_BUF_ERROR
+  deriving (Show)
+
+instance Exception ZlibError where
+
+
+pattern Z_BUF_ERROR :: Int
+pattern Z_BUF_ERROR <- ((== z_BUF_ERROR) -> True)
+  where Z_BUF_ERROR = z_BUF_ERROR
+
+pattern Z_DATA_ERROR :: Int
+pattern Z_DATA_ERROR <- ((== z_DATA_ERROR) -> True)
+  where Z_DATA_ERROR = z_DATA_ERROR
+
+pattern Z_MEM_ERROR :: Int
+pattern Z_MEM_ERROR <- ((== z_MEM_ERROR) -> True)
+  where Z_MEM_ERROR = z_MEM_ERROR
+
+pattern Z_NEED_DICT :: Int
+pattern Z_NEED_DICT <- ((== z_NEED_DICT) -> True)
+  where Z_NEED_DICT = z_NEED_DICT
+
+pattern Z_OK :: Int
+pattern Z_OK <- ((== z_OK) -> True)
+  where Z_OK = z_OK
+
+pattern Z_STREAM_END :: Int
+pattern Z_STREAM_END <- ((== z_STREAM_END) -> True)
+  where Z_STREAM_END = z_STREAM_END
+
+pattern Z_STREAM_ERROR :: Int
+pattern Z_STREAM_ERROR <- ((== z_STREAM_ERROR) -> True)
+  where Z_STREAM_ERROR = z_STREAM_ERROR
+
+pattern Z_VERSION_ERROR :: Int
+pattern Z_VERSION_ERROR <- ((== z_VERSION_ERROR) -> True)
+  where Z_VERSION_ERROR = z_VERSION_ERROR
+
+
+------------ Raw Foreign Imports ------------
+
+foreign import capi "zlib.h value Z_BUF_ERROR" z_BUF_ERROR :: Int
+foreign import capi "zlib.h value Z_DATA_ERROR" z_DATA_ERROR :: Int
+foreign import capi "zlib.h value Z_MEM_ERROR" z_MEM_ERROR :: Int
+foreign import capi "zlib.h value Z_NEED_DICT" z_NEED_DICT :: Int
+foreign import capi "zlib.h value Z_OK" z_OK :: Int
+foreign import capi "zlib.h value Z_STREAM_END" z_STREAM_END :: Int
+foreign import capi "zlib.h value Z_STREAM_ERROR" z_STREAM_ERROR :: Int
+foreign import capi "zlib.h value Z_VERSION_ERROR" z_VERSION_ERROR :: Int
+
+foreign import capi "hs_zlib.h value hs_sizeofStream" sizeofStream :: Int
+
+foreign import ccall unsafe "hs_initDecompress" initDecompress ::
+     MutableByteArray# s
+  -> Ptr Word8
+  -> Int
+  -> IO Int
+
+foreign import ccall unsafe "hs_decompressChunk" decompressChunk ::
+     MutableByteArray# s
+  -> MutableByteArray# s
+  -> Int
+  -> IO Int
+
+foreign import ccall unsafe "hs_avail_out" availOut ::
+     MutableByteArray# s
+  -> IO Int
+
+foreign import ccall unsafe "inflateEnd" inflateEnd ::
+     MutableByteArray# s
+  -> IO Int
