@@ -82,7 +82,7 @@ newStream pinnedInp = do
     Z_MEM_ERROR -> errorWithoutStackTrace "zlib: out of memory"
     Z_VERSION_ERROR -> errorWithoutStackTrace "zlib: incompatible version"
     Z_STREAM_ERROR -> throwError InvalidInitParameters
-    _ -> errorWithoutStackTrace "unknown error produced by zlib"
+    _ -> errorWithoutStackTrace ("unknown error produced by zlib: " ++ show ret)
 
 delStream :: Stream s -> PreZlib s ()
 delStream stream = do
@@ -91,7 +91,7 @@ delStream stream = do
   case ret of
     Z_OK -> pure ()
     Z_STREAM_ERROR -> throwError InvalidStreamState
-    _ -> errorWithoutStackTrace "unknown error produced by zlib"
+    _ -> errorWithoutStackTrace ("unknown error produced by zlib: " ++ show ret)
 
 -- TODO couldn't I resize the output buffer rather than use chunks?
 -- probably more useful for an unsliced version
@@ -121,7 +121,7 @@ decompress = Zlib $ loop ChunksNil
       Z_STREAM_ERROR -> throwError InvalidStreamState
       Z_MEM_ERROR -> errorWithoutStackTrace "zlib: out of memory"
       Z_BUF_ERROR -> throwError BufferTooSmall
-      _ -> errorWithoutStackTrace "unknown error produced by zlib"
+      _ -> errorWithoutStackTrace ("unknown error produced by zlib: " ++ show ret)
 
 
 ------------ Idiomatic Error Handling ------------
