@@ -6,6 +6,7 @@
 {-# language MultiParamTypeClasses #-}
 {-# language PatternSynonyms #-}
 {-# language RankNTypes #-}
+{-# language TypeApplications #-}
 {-# language UnliftedFFITypes #-}
 {-# language ViewPatterns #-}
 
@@ -27,6 +28,7 @@ import Data.Bytes.Chunks (Chunks(ChunksCons,ChunksNil))
 import Data.Primitive.ByteArray (MutableByteArray(MutableByteArray))
 import Data.Primitive.ByteArray (newByteArray, newPinnedByteArray)
 import Data.Word (Word8)
+import Foreign.C.Types (CInt(CInt))
 import Foreign.Ptr (Ptr)
 import GHC.Exts (MutableByteArray#)
 import GHC.IO (unsafeIOToST)
@@ -99,7 +101,7 @@ decompress :: Zlib s Chunks
 decompress = Zlib $ loop ChunksNil
   where
   -- TODO adapt chunkSize based on input remaining and estimated compression ratio
-  chunkSize = 32 * 1024
+  chunkSize = 32 * 1024 :: Int
   loop acc = do
     !(MutableByteArray stream#) <- asks unStream
     !oBuf@(MutableByteArray oBuf#) <- newPinnedByteArray chunkSize
@@ -111,7 +113,8 @@ decompress = Zlib $ loop ChunksNil
         loop acc'
       Z_STREAM_END -> do
         out <- Bytes.fromByteArray <$> BA.unsafeFreezeByteArray oBuf
-        outRest <- lift . lift . unsafeIOToST $ availOut stream#
+        outRestCInt <- lift . lift . unsafeIOToST $ availOut stream#
+        let outRest = fromIntegral @CInt @Int outRestCInt
         let outLen = chunkSize - outRest
         pure $ Chunks.reverse $ case outLen of
           0 -> acc
@@ -136,49 +139,49 @@ data ZlibError
 instance Exception ZlibError where
 
 
-pattern Z_BUF_ERROR :: Int
+pattern Z_BUF_ERROR :: CInt
 pattern Z_BUF_ERROR <- ((== z_BUF_ERROR) -> True)
   where Z_BUF_ERROR = z_BUF_ERROR
 
-pattern Z_DATA_ERROR :: Int
+pattern Z_DATA_ERROR :: CInt
 pattern Z_DATA_ERROR <- ((== z_DATA_ERROR) -> True)
   where Z_DATA_ERROR = z_DATA_ERROR
 
-pattern Z_MEM_ERROR :: Int
+pattern Z_MEM_ERROR :: CInt
 pattern Z_MEM_ERROR <- ((== z_MEM_ERROR) -> True)
   where Z_MEM_ERROR = z_MEM_ERROR
 
-pattern Z_NEED_DICT :: Int
+pattern Z_NEED_DICT :: CInt
 pattern Z_NEED_DICT <- ((== z_NEED_DICT) -> True)
   where Z_NEED_DICT = z_NEED_DICT
 
-pattern Z_OK :: Int
+pattern Z_OK :: CInt
 pattern Z_OK <- ((== z_OK) -> True)
   where Z_OK = z_OK
 
-pattern Z_STREAM_END :: Int
+pattern Z_STREAM_END :: CInt
 pattern Z_STREAM_END <- ((== z_STREAM_END) -> True)
   where Z_STREAM_END = z_STREAM_END
 
-pattern Z_STREAM_ERROR :: Int
+pattern Z_STREAM_ERROR :: CInt
 pattern Z_STREAM_ERROR <- ((== z_STREAM_ERROR) -> True)
   where Z_STREAM_ERROR = z_STREAM_ERROR
 
-pattern Z_VERSION_ERROR :: Int
+pattern Z_VERSION_ERROR :: CInt
 pattern Z_VERSION_ERROR <- ((== z_VERSION_ERROR) -> True)
   where Z_VERSION_ERROR = z_VERSION_ERROR
 
 
 ------------ Raw Foreign Imports ------------
 
-foreign import capi "zlib.h value Z_BUF_ERROR" z_BUF_ERROR :: Int
-foreign import capi "zlib.h value Z_DATA_ERROR" z_DATA_ERROR :: Int
-foreign import capi "zlib.h value Z_MEM_ERROR" z_MEM_ERROR :: Int
-foreign import capi "zlib.h value Z_NEED_DICT" z_NEED_DICT :: Int
-foreign import capi "zlib.h value Z_OK" z_OK :: Int
-foreign import capi "zlib.h value Z_STREAM_END" z_STREAM_END :: Int
-foreign import capi "zlib.h value Z_STREAM_ERROR" z_STREAM_ERROR :: Int
-foreign import capi "zlib.h value Z_VERSION_ERROR" z_VERSION_ERROR :: Int
+foreign import capi "zlib.h value Z_BUF_ERROR" z_BUF_ERROR :: CInt
+foreign import capi "zlib.h value Z_DATA_ERROR" z_DATA_ERROR :: CInt
+foreign import capi "zlib.h value Z_MEM_ERROR" z_MEM_ERROR :: CInt
+foreign import capi "zlib.h value Z_NEED_DICT" z_NEED_DICT :: CInt
+foreign import capi "zlib.h value Z_OK" z_OK :: CInt
+foreign import capi "zlib.h value Z_STREAM_END" z_STREAM_END :: CInt
+foreign import capi "zlib.h value Z_STREAM_ERROR" z_STREAM_ERROR :: CInt
+foreign import capi "zlib.h value Z_VERSION_ERROR" z_VERSION_ERROR :: CInt
 
 foreign import capi "hs_zlib.h value hs_sizeofStream" sizeofStream :: Int
 
@@ -186,18 +189,18 @@ foreign import ccall unsafe "hs_initDecompress" initDecompress ::
      MutableByteArray# s
   -> Ptr Word8
   -> Int
-  -> IO Int
+  -> IO CInt
 
 foreign import ccall unsafe "hs_decompressChunk" decompressChunk ::
      MutableByteArray# s
   -> MutableByteArray# s
   -> Int
-  -> IO Int
+  -> IO CInt
 
 foreign import ccall unsafe "hs_avail_out" availOut ::
      MutableByteArray# s
-  -> IO Int
+  -> IO CInt
 
 foreign import ccall unsafe "inflateEnd" inflateEnd ::
      MutableByteArray# s
-  -> IO Int
+  -> IO CInt
