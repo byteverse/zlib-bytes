@@ -45,32 +45,37 @@ instance MonadError ZlibError (Zlib s) where
   throwError exn = Zlib (throwError exn)
   catchError try handle = Zlib (unZlib try `catchError` (unZlib . handle))
 
-data Stream s = Stream
+newtype Stream s = Stream
   { unStream :: MutableByteArray s
-  , noGcInp :: Bytes -- to ensure gc does not collect the input bytes prematurely
   }
 
+-- TODO: In GHC 8.10+, use with# instead of touch# so that the
+-- noinline pragma is not needed.
 runZlib :: (forall s. Zlib s a) -> Bytes -> Either ZlibError a
+{-# noinline runZlib #-}
 runZlib action inp = runST $ runExceptT $ do
-  stream <- newStream inp
+  let pinnedInp = Bytes.pin inp
+  stream <- newStream pinnedInp
   v <- runReaderT (unZlib action) stream `catchError` (\exn -> delStream stream >> throwError exn)
   _ <- delStream stream
+  Bytes.touch pinnedInp
   pure v
 
 
 ------------ Idiomatic FFI Calls ------------
 
 type PreZlib s a = ExceptT ZlibError (ST s) a
+
+-- Precondition: Bytes are pinned.
+-- Postcondition: Call touch on the argument after calling this function.
 newStream :: Bytes -> PreZlib s (Stream s)
-newStream inp = do
-  let pinnedInp = Bytes.pin inp
-      inpP = Bytes.contents pinnedInp
-      inpLen = Bytes.length inp
+newStream pinnedInp = do
+  let inpP = Bytes.contents pinnedInp
+      inpLen = Bytes.length pinnedInp
   MutableByteArray stream# <- newByteArray sizeofStream
   ret <- lift . unsafeIOToST $ initDecompress stream# inpP inpLen
   let stream = Stream
         { unStream = MutableByteArray stream#
-        , noGcInp = pinnedInp
         }
   case ret of
     Z_OK -> pure stream
