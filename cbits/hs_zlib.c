@@ -1,7 +1,7 @@
 #include "Rts.h"
 #include "zlib.h"
 
-HsInt hs_initDecompress
+int hs_initDecompress
   ( z_stream *st
   , char *src // source buffer of compressed bytes
   , HsInt src_len // number of bytes available to be read from src
@@ -11,17 +11,17 @@ HsInt hs_initDecompress
   st->opaque = Z_NULL;
   st->next_in = src;
   st->avail_in = (int)src_len;
-  return (HsInt)(inflateInit(st));
+  return inflateInit(st);
 }
 
-HsInt hs_decompressChunk
+int hs_decompressChunk
   ( z_stream *st
   , char *dst // output buffer for decompressed bytes
   , HsInt dst_len // number of bytes available to write into dst
   ) {
   st->avail_out = (int)dst_len;
   st->next_out = dst;
-  return (HsInt)(inflate(st, Z_NO_FLUSH));
+  return inflate(st, Z_NO_FLUSH);
 }
 
-HsInt hs_avail_out(z_stream *st) { return (HsInt)(st->avail_out); }
+int hs_avail_out(z_stream *st) { return st->avail_out; }
