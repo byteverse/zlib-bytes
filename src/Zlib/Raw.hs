@@ -59,7 +59,7 @@ runZlib :: (forall s. Zlib s a) -> Bytes -> Either ZlibError a
 runZlib action inp = runST $ runExceptT $ do
   let pinnedInp = Bytes.pin inp
   stream <- newStream pinnedInp
-  v <- runReaderT (unZlib action) stream `onException` (\exn -> delStream stream >> throwError exn)
+  v <- runReaderT (unZlib action) stream `catchError` (\exn -> delStream stream >> throwError exn)
   _ <- delStream stream
   Bytes.touch pinnedInp
   pure v

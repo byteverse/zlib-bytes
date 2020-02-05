@@ -54,7 +54,7 @@ test-suite test
   type: exitcode-stdio-1.0
   hs-source-dirs: test
   main-is: Main.hs
-  ghc-options: -Wall -O2
+  ghc-options: -Wall -O2 -rtsopts "-with-rtsopts=-A64K"
   build-depends:
     , base >=4.11.1 && <5
     , byteslice
