@@ -8,5 +8,5 @@ main :: IO ()
 main = do
   everything <- Chunks.hGetContents stdin
   case decompress (Chunks.concat everything) of
-    Left _ -> fail "could not decompress"
+    Left err -> fail ("could not decompress: " ++ show err)
     Right r -> Bytes.hPut stdout (Chunks.concat r)

@@ -7,6 +7,7 @@
 {-# language PatternSynonyms #-}
 {-# language RankNTypes #-}
 {-# language TypeApplications #-}
+{-# language UnboxedTuples #-}
 {-# language UnliftedFFITypes #-}
 {-# language ViewPatterns #-}
 
@@ -30,8 +31,8 @@ import Data.Primitive.ByteArray (newByteArray, newPinnedByteArray)
 import Data.Word (Word8)
 import Foreign.C.Types (CInt(CInt))
 import Foreign.Ptr (Ptr)
-import GHC.Exts (MutableByteArray#)
-import GHC.IO (unsafeIOToST)
+import GHC.Exts (MutableByteArray#,touch#)
+import GHC.IO (IO(IO),unsafeIOToST)
 
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Chunks as Chunks
@@ -58,7 +59,7 @@ runZlib :: (forall s. Zlib s a) -> Bytes -> Either ZlibError a
 runZlib action inp = runST $ runExceptT $ do
   let pinnedInp = Bytes.pin inp
   stream <- newStream pinnedInp
-  v <- runReaderT (unZlib action) stream `catchError` (\exn -> delStream stream >> throwError exn)
+  v <- runReaderT (unZlib action) stream `onException` (\exn -> delStream stream >> throwError exn)
   _ <- delStream stream
   Bytes.touch pinnedInp
   pure v
@@ -74,7 +75,7 @@ newStream :: Bytes -> PreZlib s (Stream s)
 newStream pinnedInp = do
   let inpP = Bytes.contents pinnedInp
       inpLen = Bytes.length pinnedInp
-  MutableByteArray stream# <- newByteArray sizeofStream
+  MutableByteArray stream# <- newPinnedByteArray sizeofStream
   ret <- lift . unsafeIOToST $ initDecompress stream# inpP inpLen
   let stream = Stream
         { unStream = MutableByteArray stream#
@@ -105,7 +106,13 @@ decompress = Zlib $ loop ChunksNil
   loop acc = do
     !(MutableByteArray stream#) <- asks unStream
     !oBuf@(MutableByteArray oBuf#) <- newPinnedByteArray chunkSize
-    ret <- lift . lift . unsafeIOToST $ decompressChunk stream# oBuf# chunkSize
+    ret <- lift . lift . unsafeIOToST $ do
+      r <- decompressChunk stream# oBuf# chunkSize
+      -- This call to touch# is not really necessary since GHC cannot
+      -- possibly have any insight into what ret is, but it is prudent
+      -- to include it here anyway.
+      touchMutableByteArray# oBuf#
+      pure r
     case ret of
       Z_OK -> do
         out <- Bytes.fromByteArray <$> BA.unsafeFreezeByteArray oBuf
@@ -126,6 +133,8 @@ decompress = Zlib $ loop ChunksNil
       Z_BUF_ERROR -> throwError BufferTooSmall
       _ -> errorWithoutStackTrace ("unknown error produced by zlib: " ++ show ret)
 
+touchMutableByteArray# :: MutableByteArray# s -> IO ()
+touchMutableByteArray# x = IO (\s -> (# touch# x s, () #))
 
 ------------ Idiomatic Error Handling ------------
 
