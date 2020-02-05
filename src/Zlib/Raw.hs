@@ -29,9 +29,10 @@ import Data.Bytes.Chunks (Chunks(ChunksCons,ChunksNil))
 import Data.Primitive.ByteArray (MutableByteArray(MutableByteArray))
 import Data.Primitive.ByteArray (newByteArray, newPinnedByteArray)
 import Data.Word (Word8)
-import Foreign.C.Types (CInt(CInt))
+import Data.Void (Void)
+import Foreign.C.Types (CInt(CInt),CUInt(CUInt))
 import Foreign.Ptr (Ptr)
-import GHC.Exts (MutableByteArray#,touch#)
+import GHC.Exts (Any,MutableByteArray#,SmallMutableArray#,touch#)
 import GHC.IO (IO(IO),unsafeIOToST)
 
 import qualified Data.Bytes as Bytes
@@ -180,6 +181,14 @@ pattern Z_VERSION_ERROR :: CInt
 pattern Z_VERSION_ERROR <- ((== z_VERSION_ERROR) -> True)
   where Z_VERSION_ERROR = z_VERSION_ERROR
 
+hs_allocate :: Any -> CUInt -> CUInt -> IO (Ptr Word8)
+hs_allocate _ items size = do
+  r <- newPinnedByteArray (fromIntegral items * fromIntegral size)
+  pure (BA.mutableByteArrayContents r)
+
+------------ Foreign Exports ------------
+
+foreign export ccall hs_allocate :: StablePtr Void -> CUInt -> CUInt -> IO (Ptr Word8)
 
 ------------ Raw Foreign Imports ------------
 
