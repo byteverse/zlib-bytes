@@ -18,6 +18,18 @@ extra-source-files:
   , test/input-001.zlib
   , test/input-002.zlib
   , test/input-003.zlib
+  , cbits/trees.h
+  , cbits/zutil.h
+  , cbits/inffixed.h
+  , cbits/zconf.h
+  , cbits/crc32.h
+  , cbits/inflate.h
+  , cbits/zlib.h
+  , cbits/deflate.h
+  , cbits/hs_zlib.h
+  , cbits/inffast.h
+  , cbits/gzguts.h
+  , cbits/inftrees.h
 
 library
   exposed-modules: Zlib
