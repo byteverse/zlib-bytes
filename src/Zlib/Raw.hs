@@ -19,7 +19,8 @@ module Zlib.Raw
   ) where
 
 import Control.Exception (Exception)
-import Control.Monad.Except (ExceptT, runExceptT, lift)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.Except (MonadError(throwError,catchError))
 import Control.Monad.Reader (ReaderT, runReaderT, asks)
 import Control.Monad.ST (runST)
@@ -27,7 +28,7 @@ import Control.Monad.ST (ST)
 import Data.Bytes (Bytes)
 import Data.Bytes.Chunks (Chunks(ChunksCons,ChunksNil))
 import Data.Primitive.ByteArray (MutableByteArray(MutableByteArray))
-import Data.Primitive.ByteArray (newByteArray, newPinnedByteArray)
+import Data.Primitive.ByteArray (newPinnedByteArray)
 import Data.Word (Word8)
 import Foreign.C.Types (CInt(CInt))
 import Foreign.Ptr (Ptr)
