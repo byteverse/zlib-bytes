@@ -1,11 +1,11 @@
 module Zlib
   ( decompress
-  , ZlibError(..)
+  , ZlibError (..)
   ) where
 
 import Data.Bytes (Bytes)
 import Data.Bytes.Chunks (Chunks)
-import Zlib.Raw (runZlib, ZlibError(..))
+import Zlib.Raw (ZlibError (..), runZlib)
 
 import qualified Zlib.Raw as Raw
 

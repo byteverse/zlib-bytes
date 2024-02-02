@@ -1,5 +1,5 @@
-import Zlib (decompress) 
-import System.IO (stdin,stdout)
+import System.IO (stdin, stdout)
+import Zlib (decompress)
 
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Chunks as Chunks

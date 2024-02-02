@@ -1,5 +1,11 @@
 # Revision history for zlib-bytes
 
-## 0.1.0.0 -- YYYY-mm-dd
+## 0.1.0.2 -- 2024-02-01
 
-* First version. Released on an unsuspecting world.
+* Update package metadata.
+
+## 0.1.0.1 -- 2024-01-10
+
+## 0.1.0.0 -- 2021-10-21
+
+* First version.
