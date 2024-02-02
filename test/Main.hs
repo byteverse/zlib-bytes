@@ -1,21 +1,19 @@
-{-# language BangPatterns #-}
-{-# language MagicHash #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MagicHash #-}
 
-import Zlib (ZlibError(DataCorrupt),decompress)
+import Control.Monad (forM_)
 import Data.Bytes (Bytes)
 import System.Exit (exitFailure)
-import Control.Monad (forM_)
+import Zlib (ZlibError (DataCorrupt), decompress)
 
-import qualified Data.Bytes as Bytes
-import qualified Data.Bytes.Chunks as Chunks
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
+import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Chunks as Chunks
 import qualified Data.List as List
 import qualified Data.Primitive.ByteArray as BA
 import qualified Data.Primitive.PrimArray as Prim
-import qualified Data.Primitive.Ptr as Prim
 import qualified GHC.Exts as Exts
-
 
 main :: IO ()
 main = do
@@ -25,14 +23,12 @@ main = do
     Left DataCorrupt -> pure ()
     Left e -> fail ("unexpected error " ++ show e)
     Right _ -> fail "garbage data should decompress successfully"
-  where
+ where
   files =
     [ ("test/expected-001.txt", "test/input-001.zlib")
     , ("test/expected-002.txt", "test/input-002.zlib")
     , ("test/expected-003.bin", "test/input-003.zlib")
     ]
-
-
 
 oneTest :: FilePath -> FilePath -> IO ()
 oneTest expectedFile inputFile = do
